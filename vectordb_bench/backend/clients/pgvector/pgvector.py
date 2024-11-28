@@ -175,7 +175,7 @@ class PgVector(VectorDB):
     
 
     @contextmanager
-    def init(self, reset_statistics: bool = True) -> Generator[None, None, None]:
+    def init(self) -> Generator[None, None, None]:
         """
         Examples:
             >>> with self.init():
@@ -197,9 +197,6 @@ class PgVector(VectorDB):
                 log.debug(command.as_string(self.cursor))
                 self.cursor.execute(command)
             self.conn.commit()
-
-        if reset_statistics:
-            self.reset_db_statistics()
 
         self._filtered_search = self._generate_search_query(filtered=True)
         self._unfiltered_search = self._generate_search_query()
