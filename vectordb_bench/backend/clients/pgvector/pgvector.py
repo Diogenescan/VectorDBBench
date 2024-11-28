@@ -3,7 +3,7 @@
 import logging
 import pprint
 from contextlib import contextmanager
-from typing import Any, Generator, Optional, Tuple, Sequence
+from typing import Any, Generator, Optional, Tuple, Sequence, Dict
 
 import numpy as np
 import psycopg
@@ -175,7 +175,7 @@ class PgVector(VectorDB):
     
 
     @contextmanager
-    def init(self) -> Generator[None, None, None]:
+    def init(self, reset_statistics: bool = True) -> Generator[None, None, None]:
         """
         Examples:
             >>> with self.init():
@@ -198,6 +198,9 @@ class PgVector(VectorDB):
                 self.cursor.execute(command)
             self.conn.commit()
 
+        if reset_statistics:
+            self.reset_db_statistics()
+
         self._filtered_search = self._generate_search_query(filtered=True)
         self._unfiltered_search = self._generate_search_query()
 
@@ -208,6 +211,59 @@ class PgVector(VectorDB):
             self.conn.close()
             self.cursor = None
             self.conn = None
+
+    def reset_db_statistics(self):
+        """Reset database statistics"""
+        assert self.conn is not None, "Connection is not initialized"
+        assert self.cursor is not None, "Cursor is not initialized"
+        log.info(f"{self.name} resetting database statistics")
+        self.cursor.execute("SELECT pg_stat_reset();")
+        self.conn.commit()
+
+    def get_db_metrics(self) -> Dict[str, float]:
+        """Get database resource utilization metrics"""
+        assert self.conn is not None, "Connection is not initialized"
+        assert self.cursor is not None, "Cursor is not initialized"
+        metrics = {}
+
+        self.cursor.execute("""
+            SELECT 
+                sum(total_exec_time) AS total_cpu_time,
+                sum(blk_read_time + blk_write_time) as io_time
+            FROM pg_stat_statements;
+        """)
+        cpu_metrics = self.cursor.fetchone()
+        if cpu_metrics:
+            metrics['db_cpu_time'] = cpu_metrics[0] or 0.0
+            metrics['db_io_time'] = cpu_metrics[1] or 0.0
+
+        self.cursor.execute("""
+            SELECT 
+                (pg_size_bytes(current_setting('work_mem')) * numbackends) as work_memory,
+                pg_size_bytes(current_setting('shared_buffers')) as shared_buffers
+            FROM (
+                SELECT 
+                    (SELECT count(*) FROM pg_stat_activity) as numbackends
+            ) t;
+        """)
+        memory_metrics = self.cursor.fetchone()
+        if memory_metrics:
+            metrics['db_work_memory'] = memory_metrics[0] or 0.0
+            metrics['db_shared_buffers'] = memory_metrics[1] or 0.0
+
+        self.cursor.execute("""
+            SELECT 
+                CASE 
+                    WHEN (sum(heap_blks_hit) + sum(heap_blks_read)) = 0 THEN 0.0
+                    ELSE sum(heap_blks_hit) / (sum(heap_blks_hit) + sum(heap_blks_read))::float 
+                END as cache_hit_ratio
+            FROM pg_statio_user_tables;
+        """)
+        cache_metrics = self.cursor.fetchone()
+        if cache_metrics:
+            metrics['cache_hit_ratio'] = cache_metrics[0] or 0.0
+
+        return metrics
 
     def _drop_table(self):
         assert self.conn is not None, "Connection is not initialized"
