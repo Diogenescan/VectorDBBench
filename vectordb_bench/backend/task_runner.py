@@ -19,6 +19,7 @@ from .runner import MultiProcessingSearchRunner
 from .runner import SerialSearchRunner, SerialInsertRunner
 from .data_source  import DatasetSource
 
+from .clients.pgvector.pgvector import PgVector
 
 log = logging.getLogger(__name__)
 
@@ -158,6 +159,7 @@ class CaseRunner(BaseModel):
         log.info("Start performance case")
         try:
             m = Metric()
+            PgVector.reset_db_statistics(self.db.db_config)
             if drop_old:
                 if TaskStage.LOAD in self.config.stages:
                     # self._load_train_data()
@@ -186,6 +188,9 @@ class CaseRunner(BaseModel):
                     m.serial_latencies = search_results.serial_latencies
                     '''
                     m.recall, m.ndcg, m.serial_latency_p99 = search_results
+
+            metrics = PgVector.get_db_metrics(self.db.db_config)
+            log.info(f"Database metrics: {metrics}")
 
         except Exception as e:
             log.warning(f"Failed to run performance case, reason = {e}")

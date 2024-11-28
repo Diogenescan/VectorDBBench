@@ -212,56 +212,72 @@ class PgVector(VectorDB):
             self.cursor = None
             self.conn = None
 
-    def reset_db_statistics(self):
+    @classmethod
+    def reset_db_statistics(cls, db_config):
         """Reset database statistics"""
-        assert self.conn is not None, "Connection is not initialized"
-        assert self.cursor is not None, "Cursor is not initialized"
-        log.info(f"{self.name} resetting database statistics")
-        self.cursor.execute("SELECT pg_stat_reset();")
-        self.conn.commit()
+        conn = psycopg.connect(**db_config)
+        conn.autocommit = False
+        cursor = conn.cursor()
+        log.info(f"Resetting database statistics")
+        cursor.execute("SELECT pg_stat_reset();")
+        conn.commit()
+        cursor.close()
+        conn.close()
+        log.info("Database statistics have been reset.")
 
-    def get_db_metrics(self) -> Dict[str, float]:
+    @classmethod
+    def get_db_metrics(cls, db_config) -> Dict[str, float]:
         """Get database resource utilization metrics"""
-        assert self.conn is not None, "Connection is not initialized"
-        assert self.cursor is not None, "Cursor is not initialized"
+        conn = psycopg.connect(**db_config)
+        conn.autocommit = False
+        cursor = conn.cursor()
+        # Ensure extensions are available
+        cursor.execute("CREATE EXTENSION IF NOT EXISTS pg_stat_statements")
+        conn.commit()
         metrics = {}
 
-        self.cursor.execute("""
-            SELECT 
-                sum(total_exec_time) AS total_cpu_time,
-                sum(blk_read_time + blk_write_time) as io_time
-            FROM pg_stat_statements;
-        """)
-        cpu_metrics = self.cursor.fetchone()
+        # Get CPU usage (requires pg_stat_statements)
+        cursor.execute("""
+                SELECT 
+                    sum(total_exec_time) AS total_cpu_time,
+                    sum(blk_read_time + blk_write_time) as io_time
+                FROM pg_stat_statements;
+            """)
+        cpu_metrics = cursor.fetchone()
         if cpu_metrics:
             metrics['db_cpu_time'] = cpu_metrics[0] or 0.0
             metrics['db_io_time'] = cpu_metrics[1] or 0.0
 
-        self.cursor.execute("""
-            SELECT 
-                (pg_size_bytes(current_setting('work_mem')) * numbackends) as work_memory,
-                pg_size_bytes(current_setting('shared_buffers')) as shared_buffers
-            FROM (
+        # Get memory usage
+        cursor.execute("""
                 SELECT 
-                    (SELECT count(*) FROM pg_stat_activity) as numbackends
-            ) t;
-        """)
-        memory_metrics = self.cursor.fetchone()
+                    (pg_size_bytes(current_setting('work_mem')) * numbackends) as work_memory,
+                    pg_size_bytes(current_setting('shared_buffers')) as shared_buffers
+                FROM (
+                    SELECT 
+                        (SELECT count(*) FROM pg_stat_activity) as numbackends
+                ) t;
+            """)
+        memory_metrics = cursor.fetchone()
         if memory_metrics:
             metrics['db_work_memory'] = memory_metrics[0] or 0.0
             metrics['db_shared_buffers'] = memory_metrics[1] or 0.0
 
-        self.cursor.execute("""
-            SELECT 
-                CASE 
-                    WHEN (sum(heap_blks_hit) + sum(heap_blks_read)) = 0 THEN 0.0
-                    ELSE sum(heap_blks_hit) / (sum(heap_blks_hit) + sum(heap_blks_read))::float 
-                END as cache_hit_ratio
-            FROM pg_statio_user_tables;
-        """)
-        cache_metrics = self.cursor.fetchone()
+        # Get buffer cache hit ratio
+        cursor.execute("""
+                SELECT 
+                    CASE 
+                        WHEN (sum(heap_blks_hit) + sum(heap_blks_read)) = 0 THEN 0.0
+                        ELSE sum(heap_blks_hit) / (sum(heap_blks_hit) + sum(heap_blks_read))::float 
+                    END as cache_hit_ratio
+                FROM pg_statio_user_tables;
+            """)
+        cache_metrics = cursor.fetchone()
         if cache_metrics:
             metrics['cache_hit_ratio'] = cache_metrics[0] or 0.0
+
+        cursor.close()
+        conn.close()
 
         return metrics
 

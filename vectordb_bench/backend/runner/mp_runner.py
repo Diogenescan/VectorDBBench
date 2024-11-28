@@ -9,6 +9,7 @@ import numpy as np
 from ..clients import api
 from ... import config
 
+from ..clients.pgvector.pgvector import PgVector
 
 NUM_PER_BATCH = config.NUM_PER_BATCH
 log = logging.getLogger(__name__)
@@ -128,6 +129,8 @@ class MultiProcessingSearchRunner:
                 if qps > max_qps:
                     max_qps = qps
                     log.info(f"Update largest qps with concurrency {conc}: current max_qps={max_qps}")
+
+                metrics = PgVector.get_db_metrics(self.db.db_config)
         except Exception as e:
             log.warning(f"Fail to search all concurrencies: {self.concurrencies}, max_qps before failure={max_qps}, reason={e}")
             traceback.print_exc()
