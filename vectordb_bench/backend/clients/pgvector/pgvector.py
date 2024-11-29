@@ -218,16 +218,7 @@ class PgVector(VectorDB):
         log.info(f"Resetting database statistics")
         cursor.execute("SELECT pg_stat_reset();")
         cursor.execute("SELECT pg_stat_statements_reset()")
-        cursor.execute("""
-            DO $$ BEGIN
-                IF
-                    EXISTS(SELECT 1 
-                           FROM pg_extension
-                           WHERE extname = 'pg_stat_kcache') THEN
-                    DROP EXTENSION pg_stat_kcache;
-                    CREATE EXTENSION pg_stat_kcache;
-                END IF;
-            END $$;""")
+        cursor.execute("SELECT pg_stat_kcache_reset()")
         conn.commit()
         cursor.close()
         conn.close()
@@ -249,10 +240,10 @@ class PgVector(VectorDB):
         cursor.execute("""
             SELECT
                 sum(total_exec_time) AS total_exec_time_ms,
-                sum(cpu_user_time) AS cpu_user_time_ms,
-                sum(cpu_system_time) AS cpu_system_time_ms
+                sum(exec_user_time) AS cpu_user_time_ms,
+                sum(exec_system_time) AS cpu_system_time_ms
             FROM pg_stat_statements
-            JOIN pg_stat_kcache USING (userid, dbid, queryid);
+            JOIN pg_stat_kcache() USING (userid, dbid, queryid);
         """)
         cpu_metrics = cursor.fetchone()
 
@@ -261,6 +252,11 @@ class PgVector(VectorDB):
             metrics['cpu_user_time_ms'] = cpu_metrics[1] or 0.0
             metrics['cpu_system_time_ms'] = cpu_metrics[2] or 0.0
             metrics['total_cpu_time_ms'] = metrics['cpu_user_time_ms'] + metrics['cpu_system_time_ms']
+
+            if metrics['total_exec_time_ms'] > 0:
+                metrics['cpu_usage_percent'] = (metrics['total_cpu_time_ms'] / metrics['total_exec_time_ms']) * 100
+            else:
+                metrics['cpu_usage_percent'] = 0.0
 
         # Get memory usage
         cursor.execute("""
