@@ -217,6 +217,17 @@ class PgVector(VectorDB):
         cursor = conn.cursor()
         log.info(f"Resetting database statistics")
         cursor.execute("SELECT pg_stat_reset();")
+        cursor.execute("SELECT pg_stat_statements_reset()")
+        cursor.execute("""
+            DO $$ BEGIN
+                IF
+                    EXISTS(SELECT 1 
+                           FROM pg_extension
+                           WHERE extname = 'pg_stat_kcache') THEN
+                    DROP EXTENSION pg_stat_kcache;
+                    CREATE EXTENSION pg_stat_kcache;
+                END IF;
+            END $$;""")
         conn.commit()
         cursor.close()
         conn.close()
