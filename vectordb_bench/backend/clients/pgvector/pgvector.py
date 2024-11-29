@@ -230,20 +230,26 @@ class PgVector(VectorDB):
         cursor = conn.cursor()
         # Ensure extensions are available
         cursor.execute("CREATE EXTENSION IF NOT EXISTS pg_stat_statements")
+        cursor.execute("CREATE EXTENSION IF NOT EXISTS pg_stat_kcache")
         conn.commit()
         metrics = {}
 
         # Get CPU usage (requires pg_stat_statements)
         cursor.execute("""
-                SELECT 
-                    sum(total_exec_time) AS total_cpu_time,
-                    sum(blk_read_time + blk_write_time) as io_time
-                FROM pg_stat_statements;
-            """)
+            SELECT
+                sum(total_exec_time) AS total_exec_time_ms,
+                sum(cpu_user_time) AS cpu_user_time_ms,
+                sum(cpu_system_time) AS cpu_system_time_ms
+            FROM pg_stat_statements
+            JOIN pg_stat_kcache USING (userid, dbid, queryid);
+        """)
         cpu_metrics = cursor.fetchone()
+
         if cpu_metrics:
-            metrics['db_cpu_time'] = cpu_metrics[0] or 0.0
-            metrics['db_io_time'] = cpu_metrics[1] or 0.0
+            metrics['total_exec_time_ms'] = cpu_metrics[0] or 0.0
+            metrics['cpu_user_time_ms'] = cpu_metrics[1] or 0.0
+            metrics['cpu_system_time_ms'] = cpu_metrics[2] or 0.0
+            metrics['total_cpu_time_ms'] = metrics['cpu_user_time_ms'] + metrics['cpu_system_time_ms']
 
         # Get memory usage
         cursor.execute("""
