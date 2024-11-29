@@ -97,6 +97,8 @@ class MultiProcessingSearchRunner:
         conc_latency_p99_list = []
         conc_latency_avg_list = []
         try:
+            PgVector.reset_db_statistics(self.db.db_config)
+
             for conc in self.concurrencies:
                 with mp.Manager() as m:
                     q, cond = m.Queue(), m.Condition()
@@ -130,7 +132,9 @@ class MultiProcessingSearchRunner:
                     max_qps = qps
                     log.info(f"Update largest qps with concurrency {conc}: current max_qps={max_qps}")
 
-                metrics = PgVector.get_db_metrics(self.db.db_config)
+            metrics = PgVector.get_db_metrics(self.db.db_config)
+            log.info(f"Database QPS Evaluation metrics: {metrics}")
+
         except Exception as e:
             log.warning(f"Fail to search all concurrencies: {self.concurrencies}, max_qps before failure={max_qps}, reason={e}")
             traceback.print_exc()
