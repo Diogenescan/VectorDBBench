@@ -24,6 +24,7 @@ class Metric:
     conc_qps_list: list[float] = field(default_factory=list)
     conc_latency_p99_list: list[float] = field(default_factory=list)
     conc_latency_avg_list: list[float] = field(default_factory=list)
+    db_metrics: dict[str, float] = field(default_factory=dict)
 
 
 QURIES_PER_DOLLAR_METRIC = "QP$ (Quries per Dollar)"
