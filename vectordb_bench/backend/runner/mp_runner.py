@@ -92,13 +92,12 @@ class MultiProcessingSearchRunner:
 
     def _run_all_concurrencies_mem_efficient(self):
         max_qps = 0
+        metrics = None
         conc_num_list = []
         conc_qps_list = []
         conc_latency_p99_list = []
         conc_latency_avg_list = []
         try:
-            PgVector.reset_db_statistics(self.db.db_config)
-
             for conc in self.concurrencies:
                 with mp.Manager() as m:
                     q, cond = m.Queue(), m.Condition()
@@ -146,7 +145,7 @@ class MultiProcessingSearchRunner:
         finally:
             self.stop()
 
-        return max_qps, conc_num_list, conc_qps_list, conc_latency_p99_list, conc_latency_avg_list
+        return max_qps, conc_num_list, conc_qps_list, conc_latency_p99_list, conc_latency_avg_list, metrics
 
     def run(self) -> float:
         """

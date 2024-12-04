@@ -189,9 +189,6 @@ class CaseRunner(BaseModel):
                     '''
                     m.recall, m.ndcg, m.serial_latency_p99 = search_results
 
-            metrics = PgVector.get_db_metrics(self.db.db_config)
-            log.info(f"Database metrics: {metrics}")
-
         except Exception as e:
             log.warning(f"Failed to run performance case, reason = {e}")
             traceback.print_exc()
